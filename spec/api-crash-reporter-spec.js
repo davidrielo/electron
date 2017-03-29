@@ -73,6 +73,43 @@ describe('crashReporter module', function () {
         })
       })
 
+      it('should not send minidump if uploadToServer is false', function (done) {
+        this.timeout(5000)
+
+        let uploaded = false
+        if (process.platform === 'darwin') {
+          crashReporter.setUploadToServer(false)
+        }
+        let server = startServer({
+          callback (port) {
+            const crashUrl = url.format({
+              protocol: 'file',
+              pathname: path.join(fixtures, 'api', 'crash.html'),
+              search: `?port=${port},skipUpload=1`
+            })
+            w.loadURL(crashUrl)
+          },
+          processType: 'renderer',
+          done: () => {
+            uploaded = true
+          }
+        })
+
+        // On most machines, waiting 3 seconds should be enough to know that
+        // the server won't upload the minidump. Maybe we can find a way to
+        // make this test more deterministic later.
+        setTimeout(() => {
+          server.close()
+          if (process.platform === 'darwin') {
+            crashReporter.setUploadToServer(true)
+          }
+          if (uploaded) {
+            throw new Error('minidump uploaded when uploadToServer was false')
+          }
+          done()
+        }, 3000)
+      })
+
       it('should send minidump with updated extra parameters', function (done) {
         if (process.env.APPVEYOR === 'True') return done()
         if (process.env.TRAVIS === 'true') return done()
@@ -115,6 +152,15 @@ describe('crashReporter module', function () {
           submitURL: 'Missing companyName'
         })
       }, /companyName is a required option to crashReporter\.start/)
+    })
+
+    it('does not require submitURL if uploadToServer is set to false', function () {
+      assert.doesNotThrow(function () {
+        crashReporter.start({
+          companyName: 'Umbrella Corporation',
+          uploadToServer: false
+        })
+      })
     })
 
     it('can be called multiple times', function () {
@@ -215,4 +261,5 @@ const startServer = ({callback, processType, done}) => {
     }
     callback(port)
   })
+  return server
 }
